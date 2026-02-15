@@ -47,6 +47,7 @@ python3 scripts/monitor.py --url "https://x.com/user/status/123456" --watch
       "author": "@username",
       "text": "How do I fix this error?",
       "likes": 2,
+      "media": ["https://pbs.twimg.com/media/XXX.jpg"],
       "is_question": true
     }
   ]
