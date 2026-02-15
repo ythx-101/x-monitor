@@ -10,6 +10,7 @@ import sys
 import os
 import argparse
 import urllib.request
+import urllib.parse
 import time
 from datetime import datetime
 from typing import Optional, Dict, List, Any
@@ -105,6 +106,7 @@ def parse_replies(snapshot: str, original_author: str) -> List[Dict]:
         - text: Replying to    <- reply marker
         - link "@original":    <- who they replied to
         - text: actual reply content  1   2  185  <- text + stats
+        - link "/pic/orig/media%2FXXX.jpg":  <- media attachments (if present)
     """
     replies = []
     lines = snapshot.split("\n")
@@ -121,6 +123,7 @@ def parse_replies(snapshot: str, original_author: str) -> List[Dict]:
             likes = 0
             replies_count = 0
             views = 0
+            media_urls = []
 
             # Look backwards for author info
             for j in range(i - 1, max(0, i - 15), -1):
@@ -149,8 +152,8 @@ def parse_replies(snapshot: str, original_author: str) -> List[Dict]:
                 if author_handle and author_name and time_ago:
                     break
 
-            # Look forward: skip "link @..." line, then get reply text
-            for j in range(i + 1, min(len(lines), i + 5)):
+            # Look forward: skip "link @..." line, then get reply text and media
+            for j in range(i + 1, min(len(lines), i + 15)):
                 fwd = lines[j].strip()
                 if re.search(r'link\s+"@\w+"', fwd):
                     continue
@@ -174,7 +177,18 @@ def parse_replies(snapshot: str, original_author: str) -> List[Dict]:
                             "\\s*[\ue800-\ue8ff]\\s*[\\d,]+", "", raw
                         ).strip()
                         reply_text = cleaned if cleaned else raw
-                    break
+                # Extract media URLs from /pic/orig/media%2F format
+                elif fwd.startswith("- link"):
+                    media_match = re.search(r'"/pic/orig/(media%2F[^"]+)"', fwd)
+                    if media_match:
+                        # URL decode the path and extract media filename
+                        encoded_path = media_match.group(1)
+                        decoded_path = urllib.parse.unquote(encoded_path)
+                        # decoded_path should be "media/FILENAME.ext"
+                        if decoded_path.startswith("media/"):
+                            media_file = decoded_path[6:]  # Strip "media/" prefix
+                            media_url = f"https://pbs.twimg.com/media/{media_file}"
+                            media_urls.append(media_url)
 
             if author_handle and reply_text:
                 reply = {
@@ -185,6 +199,7 @@ def parse_replies(snapshot: str, original_author: str) -> List[Dict]:
                     "likes": likes,
                     "replies": replies_count,
                     "views": views,
+                    "media": media_urls,
                     "is_question": is_question(reply_text),
                 }
                 if not any(
