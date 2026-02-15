@@ -161,32 +161,35 @@ def parse_replies(snapshot: str, original_author: str) -> List[Dict]:
                     raw = fwd[len("- text:"):].strip()
                     # Nitter uses private-use Unicode icons for stats:
                     # U+E803=replies U+E80C=retweets U+E801=likes U+E800=views
-                    _ICO = "\ue803|\ue80c|\ue801|\ue800"
                     stat_match = re.search(
-                        "^(.*?)\\s+\ue803\\s*(\\d+)\\s*\ue80c\\s*\ue801\\s*(\\d+)\\s*\ue800\\s*(\\d+)",
+                        "^(.*?)\\s*\ue803\\s*(\\d+)\\s*\ue80c\\s*\ue801\\s*(\\d+)\\s*\ue800\\s*(\\d+)",
                         raw,
                     )
                     if stat_match:
-                        reply_text = stat_match.group(1).strip()
+                        # Stats-only line (text + stats, or pure stats)
+                        text_part = stat_match.group(1).strip()
                         replies_count = int(stat_match.group(2))
                         likes = int(stat_match.group(3))
                         views = int(stat_match.group(4))
+                        # Only set reply_text if we haven't found it yet
+                        if text_part and not reply_text:
+                            reply_text = text_part
                     else:
-                        # Fallback: strip any trailing icon+number sequences
+                        # Pure text line (no stats icons)
                         cleaned = re.sub(
                             "\\s*[\ue800-\ue8ff]\\s*[\\d,]+", "", raw
                         ).strip()
-                        reply_text = cleaned if cleaned else raw
+                        if cleaned and not reply_text:
+                            reply_text = cleaned
                 # Extract media URLs from /pic/orig/media%2F format
-                elif fwd.startswith("- link"):
-                    media_match = re.search(r'"/pic/orig/(media%2F[^"]+)"', fwd)
+                # In Nitter snapshots, media URLs appear on "- /url:" lines after "- link" lines
+                elif "/pic/orig/media" in fwd:
+                    media_match = re.search(r'/pic/orig/(media%2F[^\s]+|media/[^\s]+)', fwd)
                     if media_match:
-                        # URL decode the path and extract media filename
                         encoded_path = media_match.group(1)
                         decoded_path = urllib.parse.unquote(encoded_path)
-                        # decoded_path should be "media/FILENAME.ext"
                         if decoded_path.startswith("media/"):
-                            media_file = decoded_path[6:]  # Strip "media/" prefix
+                            media_file = decoded_path[6:]
                             media_url = f"https://pbs.twimg.com/media/{media_file}"
                             media_urls.append(media_url)
 
