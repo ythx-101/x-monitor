@@ -20,15 +20,13 @@ STATE_FILE = Path(__file__).parent.parent / "data" / "state.json"
 
 
 def parse_tweet_url(url: str) -> tuple:
-    """Extract username and tweet_id from X/Twitter URL."""
-    match = re.search(r'(?:x\.com|twitter\.com)/(\w+)/status/(\d+)', url)
+    match = re.search(r"(?:x\.com|twitter\.com)/(\w+)/status/(\d+)", url)
     if match:
         return match.group(1), match.group(2)
     raise ValueError(f"Cannot parse tweet URL: {url}")
 
 
 def load_state() -> Dict:
-    """Load previous check state."""
     if STATE_FILE.exists():
         with open(STATE_FILE) as f:
             return json.load(f)
@@ -36,10 +34,9 @@ def load_state() -> Dict:
 
 
 def save_state(state: Dict):
-    """Save check state."""
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+        json.dump(state, f, indent=2, ensure_ascii=False)
 
 
 def fetch_replies_via_camofox(
@@ -48,11 +45,9 @@ def fetch_replies_via_camofox(
     camofox_port: int = 9377,
     nitter_instance: str = "nitter.net",
 ) -> Optional[List[Dict]]:
-    """Fetch reply thread using Camofox + Nitter."""
     nitter_url = f"https://{nitter_instance}/{username}/status/{tweet_id}"
 
     try:
-        # Create tab
         create_data = json.dumps({
             "userId": "x-monitor",
             "sessionKey": f"monitor-{tweet_id}",
@@ -73,10 +68,8 @@ def fetch_replies_via_camofox(
             print("[Camofox] No tabId returned", file=sys.stderr)
             return None
 
-        # Wait for page to render
         time.sleep(8)
 
-        # Get snapshot
         snap_url = f"http://localhost:{camofox_port}/tabs/{tab_id}/snapshot?userId=x-monitor"
         req = urllib.request.Request(snap_url)
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -84,7 +77,6 @@ def fetch_replies_via_camofox(
 
         snapshot = snap_data.get("snapshot", "")
 
-        # Close tab
         try:
             close_req = urllib.request.Request(
                 f"http://localhost:{camofox_port}/tabs/{tab_id}",
@@ -94,7 +86,6 @@ def fetch_replies_via_camofox(
         except Exception:
             pass
 
-        # Parse replies from snapshot
         replies = parse_replies(snapshot, username)
         return replies
 
@@ -104,7 +95,17 @@ def fetch_replies_via_camofox(
 
 
 def parse_replies(snapshot: str, original_author: str) -> List[Dict]:
-    """Parse reply data from Camofox snapshot."""
+    """Parse reply data from Camofox/Nitter snapshot.
+
+    Real snapshot format for a reply block:
+        - link [eN]:           <- reply permalink
+        - link "DisplayName":  <- author display name
+        - link "@handle":      <- author handle
+        - link "12h":          <- time ago
+        - text: Replying to    <- reply marker
+        - link "@original":    <- who they replied to
+        - text: actual reply content  1   2  185  <- text + stats
+    """
     replies = []
     lines = snapshot.split("\n")
 
@@ -112,49 +113,84 @@ def parse_replies(snapshot: str, original_author: str) -> List[Dict]:
     while i < len(lines):
         line = lines[i].strip()
 
-        # Look for reply pattern: "Replying to @username"
-        if "Replying to" in line:
-            # The reply author should be a few lines above
-            author = None
-            text = None
+        if line == "- text: Replying to":
+            author_handle = None
+            author_name = None
+            reply_text = None
+            time_ago = None
             likes = 0
+            replies_count = 0
+            views = 0
 
-            # Search backwards for author
-            for j in range(max(0, i - 10), i):
-                author_match = re.search(r'@(\w+)', lines[j])
-                if author_match and author_match.group(1) != original_author:
-                    author = f"@{author_match.group(1)}"
+            # Look backwards for author info
+            for j in range(i - 1, max(0, i - 15), -1):
+                prev = lines[j].strip()
+                # Match @handle (not the original author)
+                if not author_handle:
+                    m = re.search(r'link\s+"@(\w+)"', prev)
+                    if m and m.group(1).lower() != original_author.lower():
+                        author_handle = f"@{m.group(1)}"
+                # Match display name (not a time like "12h", not nav items)
+                if not author_name:
+                    m = re.search(r'link\s+"([^@][^"]*)"', prev)
+                    if m:
+                        name = m.group(1)
+                        skip = re.match(r'^\d+[hmd]$', name) or name in (
+                            "nitter", "Logo", "more replies",
+                        )
+                        if not skip:
+                            author_name = name
+                # Match time ago
+                if not time_ago:
+                    m = re.search(r'link\s+"(\d+[hmd])"', prev)
+                    if m:
+                        time_ago = m.group(1)
 
-            # Search forward for reply text
-            for j in range(i + 1, min(len(lines), i + 10)):
-                content = lines[j].strip()
-                if content.startswith("- text:"):
-                    text = content.replace("- text:", "").strip()
-                    if text and "Replying to" not in text:
-                        break
-                    text = None
-
-            # Search for engagement numbers
-            for j in range(i + 1, min(len(lines), i + 15)):
-                engagement = lines[j].strip()
-                nums = re.findall(r'\d+', engagement)
-                if len(nums) >= 3 and not engagement.startswith("- "):
-                    # Pattern: replies likes views or similar
-                    try:
-                        likes = int(nums[0]) if len(nums) > 0 else 0
-                    except (ValueError, IndexError):
-                        pass
+                if author_handle and author_name and time_ago:
                     break
 
-            if author and text:
+            # Look forward: skip "link @..." line, then get reply text
+            for j in range(i + 1, min(len(lines), i + 5)):
+                fwd = lines[j].strip()
+                if re.search(r'link\s+"@\w+"', fwd):
+                    continue
+                if fwd.startswith("- text:"):
+                    raw = fwd[len("- text:"):].strip()
+                    # Nitter uses private-use Unicode icons for stats:
+                    # U+E803=replies U+E80C=retweets U+E801=likes U+E800=views
+                    _ICO = "\ue803|\ue80c|\ue801|\ue800"
+                    stat_match = re.search(
+                        "^(.*?)\\s+\ue803\\s*(\\d+)\\s*\ue80c\\s*\ue801\\s*(\\d+)\\s*\ue800\\s*(\\d+)",
+                        raw,
+                    )
+                    if stat_match:
+                        reply_text = stat_match.group(1).strip()
+                        replies_count = int(stat_match.group(2))
+                        likes = int(stat_match.group(3))
+                        views = int(stat_match.group(4))
+                    else:
+                        # Fallback: strip any trailing icon+number sequences
+                        cleaned = re.sub(
+                            "\\s*[\ue800-\ue8ff]\\s*[\\d,]+", "", raw
+                        ).strip()
+                        reply_text = cleaned if cleaned else raw
+                    break
+
+            if author_handle and reply_text:
                 reply = {
-                    "author": author,
-                    "text": text,
+                    "author": author_handle,
+                    "author_name": author_name or author_handle,
+                    "text": reply_text,
+                    "time_ago": time_ago,
                     "likes": likes,
-                    "is_question": is_question(text),
+                    "replies": replies_count,
+                    "views": views,
+                    "is_question": is_question(reply_text),
                 }
-                # Avoid duplicates
-                if not any(r["author"] == author and r["text"] == text for r in replies):
+                if not any(
+                    r["author"] == author_handle and r["text"] == reply_text
+                    for r in replies
+                ):
                     replies.append(reply)
 
         i += 1
@@ -163,14 +199,17 @@ def parse_replies(snapshot: str, original_author: str) -> List[Dict]:
 
 
 def is_question(text: str) -> bool:
-    """Heuristic: detect if text is a question."""
-    question_markers = [
-        "?", "？", "怎么", "如何", "为什么", "为啥", "什么原因",
-        "请教", "请问", "能不能", "可以吗", "是什么", "怎样",
-        "how", "why", "what", "can you", "is there", "does",
+    markers = [
+        "?", "\uff1f",
+        "\u600e\u4e48", "\u5982\u4f55", "\u4e3a\u4ec0\u4e48", "\u4e3a\u5565",
+        "\u4ec0\u4e48\u539f\u56e0", "\u8bf7\u6559", "\u8bf7\u95ee",
+        "\u80fd\u4e0d\u80fd", "\u53ef\u4ee5\u5417", "\u662f\u4ec0\u4e48",
+        "\u600e\u6837", "\u4f1a\u4e0d\u4f1a", "\u5417", "\u5462",
+        "\u591a\u5c11", "\u54ea\u4e2a",
+        "how", "why", "what", "can you", "is there", "does", "could",
     ]
     text_lower = text.lower()
-    return any(marker in text_lower for marker in question_markers)
+    return any(marker in text_lower for marker in markers)
 
 
 def monitor_tweet(
@@ -179,7 +218,6 @@ def monitor_tweet(
     camofox_port: int = 9377,
     nitter_instance: str = "nitter.net",
 ) -> Dict[str, Any]:
-    """Monitor a tweet's replies."""
     username, tweet_id = parse_tweet_url(url)
 
     result = {
@@ -189,7 +227,6 @@ def monitor_tweet(
         "checked_at": datetime.utcnow().isoformat(),
     }
 
-    # Fetch replies
     replies = fetch_replies_via_camofox(
         username, tweet_id, camofox_port, nitter_instance
     )
@@ -203,23 +240,22 @@ def monitor_tweet(
     result["question_count"] = len(result["questions"])
 
     if watch:
-        # Compare with previous state
         state = load_state()
         prev_key = f"tweet_{tweet_id}"
         prev_authors = set()
         if prev_key in state:
             prev_authors = set(
-                f"{r['author']}:{r['text']}" for r in state[prev_key].get("replies", [])
+                "{}:{}".format(r["author"], r["text"])
+                for r in state[prev_key].get("replies", [])
             )
 
         new_replies = [
             r for r in replies
-            if f"{r['author']}:{r['text']}" not in prev_authors
+            if "{}:{}".format(r["author"], r["text"]) not in prev_authors
         ]
         result["new_replies"] = new_replies
         result["new_count"] = len(new_replies)
 
-        # Save current state
         state[prev_key] = {
             "replies": replies,
             "last_checked": result["checked_at"],
@@ -236,11 +272,13 @@ def main():
         description="Monitor X/Twitter tweet replies via Camofox + Nitter"
     )
     parser.add_argument("--url", "-u", required=True, help="Tweet URL")
-    parser.add_argument("--watch", "-w", action="store_true",
-                        help="Watch mode: show only new replies since last check")
-    parser.add_argument("--pretty", "-p", action="store_true", help="Pretty print JSON")
-    parser.add_argument("--port", type=int, default=9377, help="Camofox port (default: 9377)")
-    parser.add_argument("--nitter", default="nitter.net", help="Nitter instance (default: nitter.net)")
+    parser.add_argument(
+        "--watch", "-w", action="store_true",
+        help="Watch mode: show only new replies since last check",
+    )
+    parser.add_argument("--pretty", "-p", action="store_true")
+    parser.add_argument("--port", type=int, default=9377)
+    parser.add_argument("--nitter", default="nitter.net")
 
     args = parser.parse_args()
     result = monitor_tweet(
