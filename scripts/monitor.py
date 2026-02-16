@@ -311,12 +311,11 @@ def main():
 
 
 if __name__ == "__main__":
-
-# 版本检查
-try:
-    from scripts.version_check import check_for_update
-    check_for_update("ythx-101/x-monitor")
-except Exception:
-    pass
+    # 版本检查
+    try:
+        from scripts.version_check import check_for_update
+        check_for_update("ythx-101/x-monitor")
+    except Exception:
+        pass
 
     main()
