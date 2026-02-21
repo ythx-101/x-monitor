@@ -54,6 +54,19 @@ python3 scripts/monitor.py --url "https://x.com/user/status/123456" --watch
 }
 ```
 
+## File Structure
+
+```
+x-monitor/
+├── SKILL.md                    # Agent skill file
+├── README.md                   # This file
+├── scripts/
+│   ├── monitor.py              # Main monitor script (replies + watch mode)
+│   └── version_check.py        # Background version checker (silent on startup)
+├── data/                       # State files (last-seen reply timestamps)
+└── VERSION
+```
+
 ## Companion Skills
 
 - [x-tweet-fetcher](https://github.com/ythx-101/x-tweet-fetcher) — Fetch tweet content and stats
