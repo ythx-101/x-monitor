@@ -6,11 +6,11 @@ An [OpenClaw](https://github.com/openclaw/openclaw) skill.
 
 ## What It Does
 
-1. **Monitor replies** — Watch a tweet's comment section for new replies
-2. **Detect questions** — Identify technical questions in replies
-3. **Draft answers** — AI analyzes the question and drafts an answer for you to review
+1. **Monitor replies** - Watch a tweet's comment section for new replies
+2. **Detect questions** - Identify technical questions in replies
+3. **Draft answers** - AI analyzes the question and drafts an answer for you to review
 
-You stay in control — the skill only reads and analyzes, never posts.
+You stay in control - the skill only reads and analyzes, never posts.
 
 ## Quick Start
 
@@ -25,8 +25,28 @@ python3 scripts/monitor.py --url "https://x.com/user/status/123456" --watch
 ## Requirements
 
 - Python 3.7+ (stdlib only)
-- [Camofox](https://github.com/nicepkg/camofox-browser) running on port 9377
+- [Camofox](https://github.com/jo-inc/camofox-browser) running on port 9377
 - A working Nitter instance (default: nitter.net)
+
+## Optional TweetClaw Input
+
+Use [TweetClaw](https://github.com/Xquik-dev/tweetclaw) as an OpenClaw
+companion when Camofox or Nitter is unavailable, or when you already collect
+X/Twitter context through the Xquik API.
+
+```bash
+openclaw plugins install npm:@xquik/tweetclaw
+openclaw config set tools.alsoAllow '["explore", "tweetclaw"]'
+```
+
+Suggested workflow:
+
+1. Use TweetClaw to fetch the target tweet, recent replies, or matching search
+   context with a narrow limit.
+2. Review the fetched context before drafting any public answer.
+3. Use x-monitor for question detection and answer drafting.
+
+TweetClaw write-like actions use its approval flow. This skill stays read-only.
 
 ## How It Works
 
@@ -69,7 +89,8 @@ x-monitor/
 
 ## Companion Skills
 
-- [x-tweet-fetcher](https://github.com/ythx-101/x-tweet-fetcher) — Fetch tweet content and stats
+- [x-tweet-fetcher](https://github.com/ythx-101/x-tweet-fetcher) - Fetch tweet content and stats
+- [TweetClaw](https://github.com/Xquik-dev/tweetclaw) - Optional OpenClaw plugin for X/Twitter source context
 
 ## License
 

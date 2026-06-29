@@ -40,6 +40,34 @@ python3 scripts/monitor.py --url "https://x.com/user/status/123" --pretty
 - Camofox browser running on localhost:9377
 - Working Nitter instance (default: nitter.net)
 
+## Optional TweetClaw Input
+
+If Camofox or Nitter is unavailable, or the user already has TweetClaw
+installed in OpenClaw, collect X/Twitter context through TweetClaw first and
+use this skill for question detection and answer drafting.
+
+Setup:
+
+```bash
+openclaw plugins install npm:@xquik/tweetclaw
+openclaw config set tools.alsoAllow '["explore", "tweetclaw"]'
+```
+
+Workflow:
+
+1. Use TweetClaw to fetch the target tweet, recent replies, or relevant search
+   context with narrow limits.
+2. Review the fetched context before drafting a public answer.
+3. Run x-monitor, or paste the reviewed TweetClaw context into OpenClaw, to
+   draft answers for user approval.
+
+Rules:
+
+- Keep this skill read-only.
+- Preserve source tweet URLs in any drafted answer context.
+- If TweetClaw write-like actions are needed, wait for TweetClaw approval flow
+  and explicit user confirmation.
+
 ## File Structure
 
 ```
