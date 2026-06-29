@@ -50,6 +50,9 @@ Setup:
 
 ```bash
 openclaw plugins install npm:@xquik/tweetclaw
+openclaw config set plugins.entries.tweetclaw.config.apiKey "$XQUIK_API_KEY"
+# Or configure MPP signing instead of an API key:
+openclaw config set plugins.entries.tweetclaw.config.tempoSigningKey "$MPP_SIGNING_KEY"
 openclaw config set tools.alsoAllow '["explore", "tweetclaw"]'
 ```
 
