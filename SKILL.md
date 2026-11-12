@@ -4,6 +4,7 @@ description: >
   Monitor X/Twitter tweet replies and detect technical questions.
   Uses Camofox + Nitter to fetch reply threads without login.
   Identifies questions in replies for AI-assisted answer drafting.
+  Read-only: it never posts or replies on X.
 ---
 
 # X Monitor
@@ -37,7 +38,7 @@ python3 scripts/monitor.py --url "https://x.com/user/status/123" --pretty
 
 ## Requirements
 
-- Camofox browser running on localhost:9377
+- [Camofox](https://github.com/jo-inc/camofox-browser) browser running on localhost:9377
 - Working Nitter instance (default: nitter.net)
 
 ## File Structure
@@ -46,8 +47,14 @@ python3 scripts/monitor.py --url "https://x.com/user/status/123" --pretty
 x-monitor/
 ├── README.md
 ├── SKILL.md          (this file)
+├── LICENSE
+├── llms.txt
+├── VERSION
 ├── scripts/
-│   └── monitor.py    (main script)
+│   ├── monitor.py         (main script)
+│   └── version_check.py   (version checker)
+├── tests/
+│   └── test_monitor.py
 └── data/
     └── state.json    (tracks last check per tweet)
 ```

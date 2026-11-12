@@ -12,7 +12,7 @@ import argparse
 import urllib.request
 import urllib.parse
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 from pathlib import Path
 
@@ -69,23 +69,25 @@ def fetch_replies_via_camofox(
             print("[Camofox] No tabId returned", file=sys.stderr)
             return None
 
-        time.sleep(8)
-
-        snap_url = f"http://localhost:{camofox_port}/tabs/{tab_id}/snapshot?userId=x-monitor"
-        req = urllib.request.Request(snap_url)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            snap_data = json.loads(resp.read().decode())
-
-        snapshot = snap_data.get("snapshot", "")
-
         try:
-            close_req = urllib.request.Request(
-                f"http://localhost:{camofox_port}/tabs/{tab_id}",
-                method="DELETE",
-            )
-            urllib.request.urlopen(close_req, timeout=5)
-        except Exception:
-            pass
+            time.sleep(8)
+
+            snap_url = f"http://localhost:{camofox_port}/tabs/{tab_id}/snapshot?userId=x-monitor"
+            req = urllib.request.Request(snap_url)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                snap_data = json.loads(resp.read().decode())
+
+            snapshot = snap_data.get("snapshot", "")
+        finally:
+            # Always close the tab, even if the snapshot request failed
+            try:
+                close_req = urllib.request.Request(
+                    f"http://localhost:{camofox_port}/tabs/{tab_id}",
+                    method="DELETE",
+                )
+                urllib.request.urlopen(close_req, timeout=5)
+            except Exception:
+                pass
 
         replies = parse_replies(snapshot, username)
         return replies
@@ -184,7 +186,7 @@ def parse_replies(snapshot: str, original_author: str) -> List[Dict]:
                 # Extract media URLs from /pic/orig/media%2F format
                 # In Nitter snapshots, media URLs appear on "- /url:" lines after "- link" lines
                 elif "/pic/orig/media" in fwd:
-                    media_match = re.search(r'/pic/orig/(media%2F[^\s]+|media/[^\s]+)', fwd)
+                    media_match = re.search(r'/pic/orig/(media%2F[^\s"]+|media/[^\s"]+)', fwd)
                     if media_match:
                         encoded_path = media_match.group(1)
                         decoded_path = urllib.parse.unquote(encoded_path)
@@ -224,10 +226,17 @@ def is_question(text: str) -> bool:
         "\u80fd\u4e0d\u80fd", "\u53ef\u4ee5\u5417", "\u662f\u4ec0\u4e48",
         "\u600e\u6837", "\u4f1a\u4e0d\u4f1a", "\u5417", "\u5462",
         "\u591a\u5c11", "\u54ea\u4e2a",
+    ]
+    english_markers = [
         "how", "why", "what", "can you", "is there", "does", "could",
     ]
     text_lower = text.lower()
-    return any(marker in text_lower for marker in markers)
+    if any(marker in text_lower for marker in markers):
+        return True
+    return any(
+        re.search(r"\b" + re.escape(marker) + r"\b", text_lower)
+        for marker in english_markers
+    )
 
 
 def monitor_tweet(
@@ -242,7 +251,7 @@ def monitor_tweet(
         "tweet_url": url,
         "username": username,
         "tweet_id": tweet_id,
-        "checked_at": datetime.utcnow().isoformat(),
+        "checked_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
     }
 
     replies = fetch_replies_via_camofox(
@@ -299,12 +308,15 @@ def main():
     parser.add_argument("--nitter", default="nitter.net")
 
     args = parser.parse_args()
-    result = monitor_tweet(
-        args.url,
-        watch=args.watch,
-        camofox_port=args.port,
-        nitter_instance=args.nitter,
-    )
+    try:
+        result = monitor_tweet(
+            args.url,
+            watch=args.watch,
+            camofox_port=args.port,
+            nitter_instance=args.nitter,
+        )
+    except ValueError as e:
+        parser.error(str(e))
 
     indent = 2 if args.pretty else None
     print(json.dumps(result, ensure_ascii=False, indent=indent))
@@ -313,7 +325,10 @@ def main():
 if __name__ == "__main__":
     # 版本检查
     try:
-        from scripts.version_check import check_for_update
+        try:
+            from version_check import check_for_update
+        except ImportError:
+            from scripts.version_check import check_for_update
         check_for_update("ythx-101/x-monitor")
     except Exception:
         pass

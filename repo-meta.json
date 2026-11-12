@@ -1,0 +1,4 @@
+{
+  "description": "Read-only OpenClaw skill to monitor X/Twitter tweet replies without login via Camofox + Nitter. Flags questions in replies, shows only new comments in watch mode, outputs JSON for AI agents to draft answers. 推特评论监控 / 免登录",
+  "topics": ["x", "twitter", "twitter-replies", "tweet-monitor", "x-twitter", "nitter", "camofox", "openclaw", "openclaw-skill", "agent-skill", "ai-agent", "social-media-monitoring", "comment-monitoring", "no-login", "python", "cli", "web-scraping"]
+}

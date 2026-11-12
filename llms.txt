@@ -1,0 +1,45 @@
+# x-monitor
+
+> A read-only OpenClaw skill that fetches replies to a tweet via Camofox + Nitter without login, flags questions, and in watch mode reports only new replies.
+
+x-monitor 是一个只读、免登录的 X/推特评论监控工具（OpenClaw 技能），标出评论区提问，watch 模式只返回新增评论。
+
+It is a plain Python CLI that prints JSON. Drafting answers is done by the AI agent that calls it; x-monitor never posts.
+
+## Requirements
+
+- Python 3.7+ (standard library only)
+- Camofox (https://github.com/jo-inc/camofox-browser) listening on port 9377
+- A working Nitter instance (default: nitter.net)
+
+## Install and run
+
+    git clone https://github.com/ythx-101/x-monitor.git && cd x-monitor
+    python3 scripts/monitor.py --url "https://x.com/username/status/123456"
+    python3 scripts/monitor.py --url "https://x.com/username/status/123456" --watch
+
+## Options
+
+- --url, -u: tweet URL (required)
+- --watch, -w: show only new replies since the last check
+- --pretty, -p: pretty-print JSON
+- --port: Camofox port (default 9377)
+- --nitter: Nitter instance host (default nitter.net)
+
+## Output fields
+
+- Top level: tweet_url, username, tweet_id, checked_at, total_replies, questions, question_count, replies (default mode) or new_replies and new_count (--watch), error (on failure)
+- Each reply: author, author_name, text, time_ago, likes, replies, views, media, is_question
+
+## Limitations
+
+- Read-only: no posting or replying
+- Depends on Nitter instance availability and on Camofox
+- Question detection is a keyword/question-mark heuristic (Chinese and English), not AI classification
+- Parses page snapshots, so page structure changes can break it
+
+## Links
+
+- README: https://github.com/ythx-101/x-monitor/blob/main/README.md
+- SKILL.md: https://github.com/ythx-101/x-monitor/blob/main/SKILL.md
+- x-tweet-fetcher (fetch a single tweet): https://github.com/ythx-101/x-tweet-fetcher
